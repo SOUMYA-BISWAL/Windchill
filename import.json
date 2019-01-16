@@ -1,0 +1,58 @@
+{
+  "imports": [
+    { "name": "PTC", "version": "1"},
+    { "name": "DocMgmt", "version": "1"},
+    { "name": "ProdMgmt", "version": "1"},
+    { "name": "DataAdmin", "version": "1"},
+    { "name": "PrincipalMgmt", "version": "1"}
+    
+  ],
+  "functions": [],
+  "actions": [
+	{
+		  "name":"createDocument",
+		  "importName":"createDocument",
+		  "description":"Action to create new WTDOC",
+		  "parameters":
+			[
+				{
+				  "name":"name",
+				  "type":"String",
+				  "isNullable":false,
+				  "isCollection":false
+				},
+				{
+				  "name":"description",
+				  "type":"String",
+				  "isNullable":true,
+				  "isCollection":false
+				},
+				{
+				  "name":"organisation",
+				  "type":"String",
+				  "isNullable":false,
+				  "isCollection":false
+				},
+				{
+				  "name":"product",
+				  "type":"String",
+				  "isNullable":false,
+				  "isCollection":false
+				},
+				{
+					"name":"ContentURL",
+					"type":"String",
+					"isNullable":false,
+					"isCollection":false
+				}
+			],
+		  "returnType": 
+			{
+				"type": "Document",
+				"isNullable":false,
+				"isCollection":false
+			}
+		}
+  
+  ]
+}

@@ -1,0 +1,111 @@
+package ext.document;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.InputStreamReader;
+import java.net.MalformedURLException;
+import java.net.URL;
+
+import org.json.JSONObject;
+
+import com.ptc.wvs.server.util.DocumentHelper;
+
+import wt.content.ApplicationData;
+import wt.content.ContentHelper;
+import wt.content.ContentHolder;
+import wt.content.ContentItem;
+import wt.content.ContentRoleType;
+import wt.content.ContentServerHelper;
+import wt.content.FormatContentHolder;
+import wt.doc.WTDocument;
+import wt.doc.WTDocumentHelper;
+import wt.enterprise.RevisionControlled;
+import wt.fc.PersistenceHelper;
+import wt.fc.QueryResult;
+import wt.fc.collections.WTCollection;
+import wt.lifecycle.LifeCycleState;
+import wt.lifecycle.State;
+import wt.method.RemoteAccess;
+import wt.method.RemoteMethodServer;
+import wt.pds.StatementSpec;
+import wt.query.QueryException;
+import wt.query.QuerySpec;
+import wt.query.SearchCondition;
+import wt.query.WhereExpression;
+import wt.series.MultilevelSeries;
+import wt.util.WTException;
+import wt.util.WTPropertyVetoException;
+import wt.vc.IterationIdentifier;
+import wt.vc.IterationInfo;
+import wt.vc.VersionControlHelper;
+import wt.vc.VersionIdentifier;
+import wt.vc.wip.WorkInProgressHelper;
+public class Fetch_Document implements RemoteAccess {
+	public static void main(String[] args) {
+		
+		URL url = null;
+		try {
+			url = new URL("http://bltsp01670.lnties.com/Windchill/app/");
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+		}
+		RemoteMethodServer rms= RemoteMethodServer.getDefault();
+		rms.setUserName("wcadmin");
+		rms.setPassword("wcadmin");
+		System.out.println("logged in Windchill");
+		 
+		Class<?> argTypes[]={String.class};
+		Object argValues[]={"Soumya"};
+		try {
+			System.out.println("Call to Fetch Document Method");
+			rms.invoke("fetchDocument", "ext.document.Fetch_Document", null, argTypes, argValues);
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}
+		//fetchDocument("soumya");
+	}
+	public static void fetchDocument(String inputUrl) throws Exception {
+		String docNumber="DOC0000000381";
+		WTDocument document;
+		File file=null;
+		try {
+			QuerySpec querySpec = new wt.query.QuerySpec(WTDocument.class);
+			SearchCondition searchCondition=new SearchCondition(WTDocument.class, "master>number", SearchCondition.EQUAL, docNumber, true);
+			querySpec.appendWhere((WhereExpression) searchCondition, new int[]{0});
+			QueryResult queryResult = PersistenceHelper.manager.find((StatementSpec)querySpec);
+			document = (WTDocument)queryResult.nextElement();
+			WTDocument latDoc = (wt.doc.WTDocument)wt.vc.VersionControlHelper.service.allVersionsOf(document.getMaster()).nextElement();
+			LifeCycleState lifecycleState= latDoc.getState();
+			System.out.println("Document Name:-> "+latDoc.getName());
+			System.out.println("Document Number:-> "+latDoc.getNumber());
+			System.out.println("Document LifeCycle state:->  "+ lifecycleState.getState().getDisplay());
+			System.out.println("Document Version:-> : "+latDoc.getVersionInfo().getIdentifier().getValue());
+			System.out.println("Document Iteration:-> : "+latDoc.getIterationIdentifier().getValue());
+			
+			FormatContentHolder  formatContentHolder = (FormatContentHolder) ContentHelper.service.getContents(latDoc);
+            ContentRoleType primaryRoleType = ContentRoleType.toContentRoleType("PRIMARY");
+            QueryResult primaryContentResult = ContentHelper.service.getContentsByRole(formatContentHolder, primaryRoleType);
+            ApplicationData primaryData = (ApplicationData)primaryContentResult.nextElement();  
+            file=new File(primaryData.getFileName());
+            System.out.println("File Name:->"+file);
+            InputStreamReader inputStreamReader = new InputStreamReader(ContentServerHelper.service.findContentStream(primaryData));
+            BufferedReader in = new BufferedReader(inputStreamReader);
+            StringBuilder responseStrBuilder = new StringBuilder();
+		    String inputStr;
+		    while ((inputStr = in.readLine()) != null) {
+		        responseStrBuilder.append(inputStr);
+		    }
+			JSONObject jsonObject = new JSONObject(responseStrBuilder.toString());
+			System.out.println("JSON OBject => "+jsonObject);
+			String nextLink = (String) jsonObject.get("@odata.nextLink");
+			System.out.println("Next Link  value => "+nextLink);
+
+	}catch (QueryException e) {
+		System.out.println("Catch Execution");
+		e.printStackTrace();
+	}
+}
+		
+}
+
+

@@ -41,8 +41,7 @@ var WorkInProgressHelper = Java.type('wt.vc.wip.WorkInProgressHelper');
 
 function action_createDocument(data, params) {
 	
-	
-	
+	// Service Inputs
 	var result = new ActionResult();
 	var name = params.get('name').getValue();
 	var description = params.get('description').getValue();
@@ -50,7 +49,9 @@ function action_createDocument(data, params) {
 	var product = params.get('product').getValue();
 	var contentURL = params.get('ContentURL').getValue();
 	
-	var fName="0000056354";//contentURL.substring(contentURL.lastIndexOf('/')+1,contentURL.length());
+	System.out.println("Service Inputs : \nname : "+name+"description : "+description+"organisation : "+organisation+"product : "+product+" contentURL => "+contentURL);
+	
+	var fName="contentURL.substring(contentURL.lastIndexOf('/')+1,contentURL.length())";
 	System.out.println("fName => "+fName);
 	
 	var querySpec = new QuerySpec(WTDocument.class);
@@ -58,9 +59,11 @@ function action_createDocument(data, params) {
                     new SearchCondition(WTDocument.class, "master>number", SearchCondition.EQUAL, fName, false),[0,1]);
 	var queryResult = PersistenceHelper.manager.find(querySpec);
 	System.out.println("Query Reslut Sixe => "+queryResult.size());
+	
+	// Condition to Check the Existing Document / Update Document Code Block
 	if(queryResult.size()>0) {
+		
 		queryDoc = queryResult.nextElement();
-		//var latQueryDoc = VersionControlHelper.service.getLatestIteration(queryDoc,true);
 		var latQueryDoc = VersionControlHelper.service.allVersionsOf(queryDoc.getMaster()).nextElement();
 		var docname = latQueryDoc.getName();
 		var docNumber = latQueryDoc.getNumber();
@@ -69,58 +72,97 @@ function action_createDocument(data, params) {
 		System.out.println("WTDocument Fetched with DocName as "+docname+", DocNumber as "+docNumber+" and State Value is => "+docState);
 		System.out.println("Query getVersionInfo : "+latQueryDoc.getVersionInfo().getIdentifier().getValue());
 		System.out.println("Query getIterationIdentifier : "+latQueryDoc.getIterationIdentifier().getValue());
-
 		
+		// Condition to Check Document State as "INWORK"
 		if(docState.toString().equals("INWORK")){
 			
-			var updatedDocument = updatePrimaryContent(latQueryDoc,contentURL);
-			
-			
+			var updatedDocument = updateDocument(latQueryDoc,contentURL);
 		}
+		
+		// Condition to Check Document State as "RELEASED"
 		else if(docState.toString().equals("RELEASED")){
 			
-			var updatedDocument = updatePrimaryContent(latQueryDoc,contentURL); //latQueryDoc
-			
+			var updatedDocument = updateDocument(latQueryDoc,contentURL); 
 			updatedDocument = VersionControlHelper.service.newVersion(updatedDocument);
 			updatedDocument = PersistenceHelper.manager.save(updatedDocument);
 			updatedDocument = PersistenceHelper.manager.refresh(updatedDocument);
 			System.out.println(" After Revise getVersionInfo : "+updatedDocument.getVersionInfo().getIdentifier().getValue());
 			System.out.println(" After Revise getIterationIdentifier : "+updatedDocument.getIterationIdentifier().getValue());
-				
-			
 		}
-	} else{
-
-	//---------------------------------------------------------Creation Code---------------
-	
-	var name = params.get('name').getValue();
-	var description = params.get('description').getValue();
-	var organisation = params.get('organisation').getValue();
-	var product = params.get('product').getValue();
-	var contentURL = params.get('ContentURL').getValue();
-	
-	System.out.println("PostMan Inputs : \nname : "+name+"description : "+description+"organisation : "+organisation+"product : "+product+" contentURL => "+contentURL);
-	
-	var containerPath = "/wt.inf.container.OrgContainer="+organisation+"/wt.pdmlink.PDMLinkProduct="+product;
-	var containerRef = WTContainerHelper.service.getByPath(containerPath);
-	var transaction = new Transaction();
-	var result = new ActionResult();
-	
-	// New WTDOCUMENT Creation and Setting Attributes
-	var doc = WTDocument.newWTDocument();
-	doc.setName(name);
-	doc.setContainerReference(containerRef);
-	
-	if(description!=null){
-			doc.setDescription(description);
 	}
 	
-	// Database Commit
-	doc = PersistenceHelper.manager.store(doc);
+	// Create New Document Code Block
+	else{
+		
+		containerPath = "/wt.inf.container.OrgContainer="+organisation+"/wt.pdmlink.PDMLinkProduct="+product;
+		var containerRef = WTContainerHelper.service.getByPath(containerPath);
 	
-	//Database Transaction
+		// New WTDOCUMENT Creation and Setting Mandatory Attributes
+		var doc = WTDocument.newWTDocument();
+		doc.setName(name);
+		doc.setNumber(fName);
+		doc.setContainerReference(containerRef);
+		
+		if(description!=null){
+				doc.setDescription(description);
+		}
+		// Database Commit
+		doc = PersistenceHelper.manager.store(doc);
+		
+		var updatedDocument = updatePrimaryContent(doc,contentURL);
+	}
+		
+		// Returning new created ChangeIssue as action result
+		updatedDocument = PersistenceHelper.manager.refresh(updatedDocument);
+		var documentEntity = data.getProcessor().toEntity(updatedDocument, data);
+		result.setReturnedObject(documentEntity);
+		return result;
+}
+
+function updateDocument(document,contentURL){
+	
+	System.out.println("Inside updatePrimaryContent Function");
+	
+	// CheckOut Document
+	workingDocument = WorkInProgressHelper.service.checkout(document, WorkInProgressHelper.service.getCheckoutFolder(), "").getWorkingCopy();
+	System.out.println("Document Checkout ");
+	
+	// Delete Existing Primary Content If ANY
+	workingDocument = ContentHelper.service.getContents(workingDocument);
+	var ci = workingDocument.getPrimary();
+	System.out.println("workingDocument Primary ContentItem => "+ci);
+	ContentServerHelper.service.deleteContent(workingDocument,ci);
+	System.out.println(" workingDocument Primary Content Deleted");
+	workingDocument = PersistenceHelper.manager.save(workingDocument);
+	System.out.println(" workingDocument Primary Content Deleted and Saved");
+	workingDocument = PersistenceHelper.manager.refresh(workingDocument);
+	workingDocument = ContentHelper.service.getContents(workingDocument);
+	var ci = workingDocument.getPrimary();
+	System.out.println(" After Delete ContentItem from workingDocument => "+ci);
+	
+	var updatedWorkingDocument = updatePrimaryContent(workingDocument,contentURL);
+	
+	// CheckIn Document
+	updatedDocument =  WorkInProgressHelper.service.checkin(updatedWorkingDocument, "its Updated"); //latQueryDoc
+	System.out.println("After Update getVersionInfo : "+updatedDocument.getVersionInfo().getIdentifier().getValue());
+	System.out.println("After Update getIterationIdentifier : "+updatedDocument.getIterationIdentifier().getValue());
+	updatedDocument = ContentHelper.service.getContents(updatedDocument);
+	var ci = updatedDocument.getPrimary();
+	System.out.println(" New ContentItem => "+ci);
+	
+	System.out.println("updatePrimaryContent Execution is over, Returning workingDocument WTDOC OBject with ID "+updatedDocument.getIdentity());
+	
+	// Returning WTDOC Object with Updated Primary Content
+	return updatedDocument;
+	
+	
+}
+
+function updatePrimaryContent(doc,contentURL){
+	
+	var transaction = new Transaction();
 	transaction.start();
-	
+		
 	var fileName=contentURL.substring(contentURL.lastIndexOf('/')+1,contentURL.length());
 	System.out.println("fileName => "+fileName);
 	
@@ -155,94 +197,10 @@ function action_createDocument(data, params) {
 	transaction.commit();
 	transaction=null;
 	inputstream.close();
-	*/
-	// Returning new created ChangeIssue as action result
-	updatedDocument = PersistenceHelper.manager.refresh(updatedDocument);
-    var documentEntity = data.getProcessor().toEntity(updatedDocument, data);
-    result.setReturnedObject(documentEntity);
-    return result;
 	
-	}
-}
-
-
-function updatePrimaryContent(document,contentURL){
+	var doc = PersistenceHelper.manager.refresh(doc);
 	
-	System.out.println("Inside updatePrimaryContent Function");
-	
-	// CheckOut Document
-	workingDocument = WorkInProgressHelper.service.checkout(document, WorkInProgressHelper.service.getCheckoutFolder(), "").getWorkingCopy();
-	System.out.println("Document Checkout ");
-	
-	// Delete Existing Primary Content If ANY
-	workingDocument = ContentHelper.service.getContents(workingDocument);
-	var ci = workingDocument.getPrimary();
-	System.out.println("workingDocument Primary ContentItem => "+ci);
-	ContentServerHelper.service.deleteContent(workingDocument,ci);
-	System.out.println(" workingDocument Primary Content Deleted");
-	workingDocument = PersistenceHelper.manager.save(workingDocument);
-	System.out.println(" workingDocument Primary Content Deleted and Saved");
-	workingDocument = PersistenceHelper.manager.refresh(workingDocument);
-	workingDocument = ContentHelper.service.getContents(workingDocument);
-	var ci = workingDocument.getPrimary();
-	System.out.println(" After Delete ContentItem from workingDocument => "+ci);
-	
-	// Fetching File Name fron URL
-	var fileName=contentURL.substring(contentURL.lastIndexOf('/')+1,contentURL.length());
-	System.out.println("fileName => "+fileName);
-	
-	//Database Transaction
-	var transaction = new Transaction();
-	transaction.start();
-	
-	// Connecting to ThingWorx Repository with basic Authentication.
-	var url = new URL(contentURL);
-	var urlConnection = url.openConnection();
-	var userName = "Administrator";
-	var password ="thingworx";
-	var userpass = userName + ":" + password;
-	var basicAuth = "Basic " + new String(Base64.getEncoder().encode(userpass.getBytes()));
-	urlConnection.setRequestProperty ("Authorization", basicAuth);
-	var inputStreamReader = new InputStreamReader(urlConnection.getInputStream());
-	var bufferedReader  = new BufferedReader(inputStreamReader);
-	
-	// Creating JSON File From Response Content 
-	var responseStrBuilder = new StringBuilder();
-	var line=null;
-	while ((line = bufferedReader.readLine()) != null) {
-		responseStrBuilder.append(line);
-	}
-	var jsonObject = new JSONObject(responseStrBuilder.toString());
-	System.out.println("JSON OBject => "+jsonObject);
-	file = new File("D:\\"+fileName);
-	var writer = new FileWriter(file);
-	writer.write(jsonObject.toJSONString());
-	writer.close();
-	
-	// Update WTDOC with New Primary Content
-	var docAD = ApplicationData.newApplicationData(workingDocument);
-	docAD.setFileName(file.getName());
-	docAD.setUploadedFromPath("D:\\"+fileName);
-	docAD.setRole(ContentRoleType.PRIMARY);
-	var inputstream = new java.io.FileInputStream(file);
-	ContentServerHelper.service.updateContent(workingDocument, docAD,inputstream);
-	transaction.commit();
-	transaction=null;
-	inputstream.close();
-	workingDocument = PersistenceHelper.manager.refresh(workingDocument);
-	
-	// CheckIn Document
-	updatedDocument =  WorkInProgressHelper.service.checkin(workingDocument, "its Updated"); //latQueryDoc
-	System.out.println("After Update getVersionInfo : "+updatedDocument.getVersionInfo().getIdentifier().getValue());
-	System.out.println("After Update getIterationIdentifier : "+updatedDocument.getIterationIdentifier().getValue());
-	updatedDocument = ContentHelper.service.getContents(updatedDocument);
-	var ci = updatedDocument.getPrimary();
-	System.out.println(" New ContentItem => "+ci);
-	
-	System.out.println("updatePrimaryContent Execution is over, Returning workingDocument WTDOC OBject with ID "+updatedDocument.getIdentity());
-	
-	// Returning WTDOC Object with Updated Primary Content
-	return updatedDocument;
+	return doc;
 	
 	
 }
